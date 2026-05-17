@@ -28,6 +28,7 @@ class KeyMeView(generics.RetrieveAPIView):
         serializer = self.get_serializer(keys)
         data = serializer.data
         data['username'] = request.user.username
+        data['user_id'] = request.user.id
         return Response(data)
 
 @api_view(['POST'])

@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [showProfile, setShowProfile] = useState(false);
   const [showUnlock, setShowUnlock] = useState(false);
   const [username, setUsername] = useState('');
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [unlockedNames, setUnlockedNames] = useState({});
   const [unlockedPrivateKey, setUnlockedPrivateKey] = useState(null);
 
@@ -39,6 +40,7 @@ export default function Dashboard() {
       try {
         const keys = await fetchMyKeys();
         setUsername(keys.username || 'User');
+        setCurrentUserId(keys.user_id);
       } catch (err) {}
     };
 
@@ -105,7 +107,8 @@ export default function Dashboard() {
                     {unlockedNames[doc.id] || (doc.encrypted_filename && doc.encrypted_filename.includes(':') ? 'Encrypted File' : (doc.encrypted_filename || 'Encrypted File'))}
                   </span>
                   <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
-                    Sent: {new Date(doc.created_at).toLocaleString()}
+                    {doc.owner === currentUserId ? 'Sent: ' : 'Received: '} 
+                    {new Date(doc.created_at).toLocaleString()}
                   </span>
                 </div>
                 <button
