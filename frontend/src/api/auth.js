@@ -4,7 +4,8 @@ import {
   generateSalt,
   deriveKeyFromPassword,
   exportPublicKey,
-  wrapPrivateKey
+  wrapPrivateKey,
+  unwrapPrivateKey
 } from '../utils/crypto';
 
 const API_BASE = '/api/auth';
@@ -52,4 +53,37 @@ export const logoutUser = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('decrypted_private_key'); // clear memory
+};
+
+export const changePassword = async (oldPassword, newPassword, myKeys) => {
+    // 1. Un-wrap existing RSA private key using OLD password
+    const oldSaltBuffer = new Uint8Array(
+        window.atob(myKeys.salt).split('').map(c => c.charCodeAt(0))
+    ).buffer;
+    const oldDerivedKey = await deriveKeyFromPassword(oldPassword, oldSaltBuffer);
+    
+    const [privIvBase64, privEncBase64] = myKeys.encrypted_rsa_private_key.split(':');
+    const rsaPrivateKey = await unwrapPrivateKey(privEncBase64, privIvBase64, oldDerivedKey);
+
+    // 2. Re-wrap RSA private key using NEW password
+    const newSaltStr = generateSalt();
+    const newSaltBuffer = window.atob(newSaltStr).split('').map(c => c.charCodeAt(0));
+    const newDerivedKey = await deriveKeyFromPassword(newPassword, new Uint8Array(newSaltBuffer).buffer);
+    
+    const { encryptedPrivateKey, iv } = await wrapPrivateKey(rsaPrivateKey, newDerivedKey);
+    const newStoredPrivateKey = `${iv}:${encryptedPrivateKey}`;
+
+    // 3. Send to server
+    const token = localStorage.getItem('access_token');
+    const payload = {
+        old_password: oldPassword,
+        new_password: newPassword,
+        new_salt: newSaltStr,
+        new_encrypted_rsa_private_key: newStoredPrivateKey
+    };
+
+    const response = await axios.post(`${API_BASE}/change-password/`, payload, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
 };

@@ -1,5 +1,7 @@
 from rest_framework import generics, status, views, viewsets
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.db.models import Q
@@ -20,6 +22,34 @@ class KeyMeView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user.keys
+
+    def get(self, request, *args, **kwargs):
+        keys = self.get_object()
+        serializer = self.get_serializer(keys)
+        data = serializer.data
+        data['username'] = request.user.username
+        return Response(data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    user = request.user
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    new_salt = request.data.get('new_salt')
+    new_encrypted_rsa_private_key = request.data.get('new_encrypted_rsa_private_key')
+
+    if not user.check_password(old_password):
+        return Response({"error": "Incorrect old password"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user.set_password(new_password)
+    user.save()
+    
+    user.keys.salt = new_salt
+    user.keys.encrypted_rsa_private_key = new_encrypted_rsa_private_key
+    user.keys.save()
+    
+    return Response({"success": "Password updated"})
 
 class PublicKeyListView(views.APIView):
     permission_classes = (IsAuthenticated,)

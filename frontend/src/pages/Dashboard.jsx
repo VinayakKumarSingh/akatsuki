@@ -4,12 +4,16 @@ import { logoutUser } from '../api/auth';
 import axios from 'axios';
 import UploadModal from '../components/UploadModal';
 import DecryptModal from '../components/DecryptModal';
+import ProfileModal from '../components/ProfileModal';
+import { fetchMyKeys } from '../api/documents';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [decryptDoc, setDecryptDoc] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [username, setUsername] = useState('');
 
   useEffect(() => {
     // Basic fetch just to ensure routing and API connection works
@@ -26,7 +30,16 @@ export default function Dashboard() {
         }
       }
     };
+    
+    const fetchUser = async () => {
+      try {
+        const keys = await fetchMyKeys();
+        setUsername(keys.username || 'User');
+      } catch (err) {}
+    };
+
     fetchDocs();
+    fetchUser();
   }, []);
 
   const fetchDocs = async () => {
@@ -36,7 +49,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDocuments(res.data);
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const handleLogout = () => {
@@ -47,10 +60,18 @@ export default function Dashboard() {
   return (
     <div className="dashboard-container">
       <div className="nav-bar">
-        <h2 className="gradient-text">Secure Vault</h2>
-        <button className="btn" style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }} onClick={handleLogout}>
-          Sign Out
-        </button>
+        <h2 className="gradient-text">Akatsuki</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
+            Welcome, <strong style={{ color: 'white' }}>{username}</strong>
+          </div>
+          <button className="btn" style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-color)' }} onClick={() => setShowProfile(true)}>
+            Profile & Security
+          </button>
+          <button className="btn" style={{ background: 'rgba(255,255,255,0.1)', color: 'white' }} onClick={handleLogout}>
+            Sign Out
+          </button>
+        </div>
       </div>
 
       <div className="glass-panel" style={{ padding: '30px', minHeight: '400px' }}>
@@ -69,8 +90,8 @@ export default function Dashboard() {
             {documents.map(doc => (
               <div key={doc.id} style={{ padding: '16px', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>{doc.encrypted_filename && doc.encrypted_filename.includes(':') ? 'Encrypted File' : (doc.encrypted_filename || 'Encrypted File')}</span>
-                <button 
-                  className="btn" 
+                <button
+                  className="btn"
                   style={{ padding: '6px 12px', fontSize: '0.875rem', background: 'rgba(99, 102, 241, 0.2)' }}
                   onClick={() => setDecryptDoc(doc)}
                 >
@@ -81,22 +102,26 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-      
+
       {showUpload && (
-        <UploadModal 
-          onClose={() => setShowUpload(false)} 
+        <UploadModal
+          onClose={() => setShowUpload(false)}
           onUploadSuccess={() => {
             setShowUpload(false);
             fetchDocs();
-          }} 
+          }}
         />
       )}
 
       {decryptDoc && (
-        <DecryptModal 
-          document={decryptDoc} 
-          onClose={() => setDecryptDoc(null)} 
+        <DecryptModal
+          document={decryptDoc}
+          onClose={() => setDecryptDoc(null)}
         />
+      )}
+
+      {showProfile && (
+        <ProfileModal onClose={() => setShowProfile(false)} />
       )}
     </div>
   );
