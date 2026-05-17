@@ -39,7 +39,6 @@ export const uploadEncryptedDocument = async (file, recipientId, recipientPublic
     const recipientPubKey = await importPublicKey(recipientPublicKeyJwkStr);
     const encryptedAESKey = await encryptAESKeyWithRSA(aesKey, recipientPubKey);
 
-    // Prepare Keys array (we can also encrypt for ourselves so we can read it later, but let's stick to recipient for now)
     const keys = [
         {
             key_type: 'RSA',
@@ -48,10 +47,22 @@ export const uploadEncryptedDocument = async (file, recipientId, recipientPublic
         }
     ];
 
+    // 4b. Also encrypt the AES Key with the Sender's (our own) RSA Public Key
+    // so the sender can decrypt and read the file they just uploaded!
+    const myKeys = await fetchMyKeys();
+    const myPubKey = await importPublicKey(myKeys.rsa_public_key);
+    const myEncryptedAESKey = await encryptAESKeyWithRSA(aesKey, myPubKey);
+    
+    keys.push({
+        key_type: 'RSA',
+        // recipient_id: null, (Django will just ignore or we don't provide it, but it's better to provide it if we have it. Wait, fetchMyKeys doesn't return user_id right now. But we can just omit recipient_id, and it will be null, and the sender can still iterate and decrypt it!)
+        encrypted_key: myEncryptedAESKey
+    });
+
     // 5. Upload via FormData
     const formData = new FormData();
     const encryptedBlob = new Blob([ciphertext], { type: 'application/octet-stream' });
-    formData.append('file', encryptedBlob);
+    formData.append('file_path', encryptedBlob, 'encrypted.bin');
     formData.append('encrypted_filename', encryptedFilename);
     formData.append('iv', iv);
     formData.append('keys', JSON.stringify(keys));

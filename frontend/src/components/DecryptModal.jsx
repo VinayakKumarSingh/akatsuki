@@ -50,13 +50,14 @@ export default function DecryptModal({ document, onClose }) {
             aesKey = await decryptAESKeyWithRSA(keyObj.encrypted_key, rsaPrivateKey);
             break; // Found the right key!
           } catch (e) {
+            console.error("Decryption failed for a key:", e);
             // Not for us or corrupted
           }
         }
       }
 
       if (!aesKey) {
-        throw new Error("Could not decrypt the AES key. Are you sure you are the recipient?");
+        throw new Error("Could not decrypt the AES key. Are you sure you are the recipient? Detailed error logged to console.");
       }
 
       // 5. Download Ciphertext

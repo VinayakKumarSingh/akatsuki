@@ -16,7 +16,9 @@ export const arrayBufferToBase64 = (buffer) => {
 
 // Helper: Convert Base64 String to ArrayBuffer
 export const base64ToArrayBuffer = (base64) => {
-    const binary_string = window.atob(base64);
+    let padded = base64;
+    while (padded.length % 4 !== 0) padded += '=';
+    const binary_string = window.atob(padded);
     const len = binary_string.length;
     const bytes = new Uint8Array(len);
     for (let i = 0; i < len; i++) {
@@ -182,7 +184,7 @@ export const decryptAESKeyWithRSA = async (encryptedAESBase64, rsaPrivateKey) =>
     return await window.crypto.subtle.importKey(
         "raw",
         decryptedRaw,
-        { name: "AES-GCM" },
+        { name: "AES-GCM", length: 256 },
         true,
         ["encrypt", "decrypt"]
     );
