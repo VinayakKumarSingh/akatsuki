@@ -5,6 +5,7 @@ import axios from 'axios';
 import UploadModal from '../components/UploadModal';
 import DecryptModal from '../components/DecryptModal';
 import ProfileModal from '../components/ProfileModal';
+import UnlockVaultModal from '../components/UnlockVaultModal';
 import { fetchMyKeys } from '../api/documents';
 
 export default function Dashboard() {
@@ -13,7 +14,10 @@ export default function Dashboard() {
   const [showUpload, setShowUpload] = useState(false);
   const [decryptDoc, setDecryptDoc] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showUnlock, setShowUnlock] = useState(false);
   const [username, setUsername] = useState('');
+  const [unlockedNames, setUnlockedNames] = useState({});
+  const [unlockedPrivateKey, setUnlockedPrivateKey] = useState(null);
 
   useEffect(() => {
     // Basic fetch just to ensure routing and API connection works
@@ -76,7 +80,14 @@ export default function Dashboard() {
 
       <div className="glass-panel" style={{ padding: '30px', minHeight: '400px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3>My Documents</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <h3>My Documents</h3>
+            {!unlockedPrivateKey && documents.length > 0 && (
+              <button className="btn" style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '6px 12px', fontSize: '0.875rem' }} onClick={() => setShowUnlock(true)}>
+                🔓 Unlock Vault to view filenames
+              </button>
+            )}
+          </div>
           <button className="btn btn-primary" onClick={() => setShowUpload(true)}>+ Upload Encrypted File</button>
         </div>
 
@@ -88,8 +99,15 @@ export default function Dashboard() {
         ) : (
           <div>
             {documents.map(doc => (
-              <div key={doc.id} style={{ padding: '16px', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{doc.encrypted_filename && doc.encrypted_filename.includes(':') ? 'Encrypted File' : (doc.encrypted_filename || 'Encrypted File')}</span>
+              <div key={doc.id} style={{ padding: '16px', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: '500', color: unlockedNames[doc.id] ? '#fff' : '#94a3b8' }}>
+                    {unlockedNames[doc.id] || (doc.encrypted_filename && doc.encrypted_filename.includes(':') ? 'Encrypted File' : (doc.encrypted_filename || 'Encrypted File'))}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                    Sent: {new Date(doc.created_at).toLocaleString()}
+                  </span>
+                </div>
                 <button
                   className="btn"
                   style={{ padding: '6px 12px', fontSize: '0.875rem', background: 'rgba(99, 102, 241, 0.2)' }}
@@ -116,7 +134,20 @@ export default function Dashboard() {
       {decryptDoc && (
         <DecryptModal
           document={decryptDoc}
+          cachedPrivateKey={unlockedPrivateKey}
           onClose={() => setDecryptDoc(null)}
+        />
+      )}
+
+      {showUnlock && (
+        <UnlockVaultModal 
+          documents={documents}
+          onClose={() => setShowUnlock(false)}
+          onUnlocked={(names, privKey) => {
+            setUnlockedNames(names);
+            setUnlockedPrivateKey(privKey);
+            setShowUnlock(false);
+          }}
         />
       )}
 

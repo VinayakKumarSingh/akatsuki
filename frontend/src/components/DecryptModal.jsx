@@ -8,15 +8,15 @@ import {
   decryptString
 } from '../utils/crypto';
 
-export default function DecryptModal({ document, onClose }) {
+export default function DecryptModal({ document, cachedPrivateKey, onClose }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const handleDecrypt = async (e) => {
-    e.preventDefault();
-    if (!password) {
+    if (e) e.preventDefault();
+    if (!cachedPrivateKey && !password) {
       setError('Password is required to unlock your private key.');
       return;
     }
@@ -26,21 +26,25 @@ export default function DecryptModal({ document, onClose }) {
     setSuccessMsg('');
 
     try {
-      // 1. Fetch User's Encrypted Private Key & Salt
-      const myKeys = await fetchMyKeys();
-      if (!myKeys || !myKeys.encrypted_rsa_private_key) {
-        throw new Error("No private key found on server. Did you register properly?");
+      let rsaPrivateKey = cachedPrivateKey;
+
+      if (!rsaPrivateKey) {
+        // 1. Fetch User's Encrypted Private Key & Salt
+        const myKeys = await fetchMyKeys();
+        if (!myKeys || !myKeys.encrypted_rsa_private_key) {
+          throw new Error("No private key found on server. Did you register properly?");
+        }
+
+        // 2. Derive Password Key
+        const saltBuffer = new Uint8Array(
+          window.atob(myKeys.salt).split('').map(c => c.charCodeAt(0))
+        ).buffer;
+        const derivedKey = await deriveKeyFromPassword(password, saltBuffer);
+
+        // 3. Unwrap RSA Private Key
+        const [privIvBase64, privEncBase64] = myKeys.encrypted_rsa_private_key.split(':');
+        rsaPrivateKey = await unwrapPrivateKey(privEncBase64, privIvBase64, derivedKey);
       }
-
-      // 2. Derive Password Key
-      const saltBuffer = new Uint8Array(
-        window.atob(myKeys.salt).split('').map(c => c.charCodeAt(0))
-      ).buffer;
-      const derivedKey = await deriveKeyFromPassword(password, saltBuffer);
-
-      // 3. Unwrap RSA Private Key
-      const [privIvBase64, privEncBase64] = myKeys.encrypted_rsa_private_key.split(':');
-      const rsaPrivateKey = await unwrapPrivateKey(privEncBase64, privIvBase64, derivedKey);
 
       // 4. Find the correct Access Key for this document
       let aesKey = null;
@@ -104,29 +108,33 @@ export default function DecryptModal({ document, onClose }) {
         </div>
 
         <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '0.9rem' }}>
-          Please enter your Master Password to locally unlock your Private Key and decrypt this file.
+          {cachedPrivateKey 
+            ? "Your vault is unlocked. Click below to decrypt and download this file."
+            : "Please enter your Master Password to locally unlock your Private Key and decrypt this file."}
         </p>
 
         {error && <div className="error-text">{error}</div>}
         {successMsg && <div style={{ color: 'var(--success-color)', marginBottom: '16px', fontSize: '0.875rem' }}>{successMsg}</div>}
 
         <form onSubmit={handleDecrypt}>
-          <div className="input-group" style={{ marginBottom: '32px' }}>
-            <label>Master Password</label>
-            <input 
-              type="password" 
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required 
-            />
-          </div>
+          {!cachedPrivateKey && (
+            <div className="input-group" style={{ marginBottom: '32px' }}>
+              <label>Master Password</label>
+              <input 
+                type="password" 
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required 
+              />
+            </div>
+          )}
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', marginTop: cachedPrivateKey ? '32px' : '0' }}>
             <button type="button" className="btn" style={{ flex: 1, background: 'rgba(255,255,255,0.1)', color: 'white' }} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading || !password}>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading || (!cachedPrivateKey && !password)}>
               {loading ? 'Decrypting...' : 'Decrypt & Download'}
             </button>
           </div>
