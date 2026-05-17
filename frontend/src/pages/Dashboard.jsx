@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logoutUser } from '../api/auth';
 import axios from 'axios';
+import UploadModal from '../components/UploadModal';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
+  const [showUpload, setShowUpload] = useState(false);
 
   useEffect(() => {
     // Basic fetch just to ensure routing and API connection works
@@ -25,6 +27,16 @@ export default function Dashboard() {
     fetchDocs();
   }, []);
 
+  const fetchDocs = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get('/api/documents/', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDocuments(res.data);
+    } catch (err) {}
+  };
+
   const handleLogout = () => {
     logoutUser();
     navigate('/login');
@@ -42,7 +54,7 @@ export default function Dashboard() {
       <div className="glass-panel" style={{ padding: '30px', minHeight: '400px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3>My Documents</h3>
-          <button className="btn btn-primary">+ Upload Encrypted File</button>
+          <button className="btn btn-primary" onClick={() => setShowUpload(true)}>+ Upload Encrypted File</button>
         </div>
 
         {documents.length === 0 ? (
@@ -63,6 +75,16 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      
+      {showUpload && (
+        <UploadModal 
+          onClose={() => setShowUpload(false)} 
+          onUploadSuccess={() => {
+            setShowUpload(false);
+            fetchDocs();
+          }} 
+        />
+      )}
     </div>
   );
 }
