@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { logoutUser } from '../api/auth';
 import axios from 'axios';
+import logo from '../assets/vite.svg';
 import UploadModal from '../components/UploadModal';
 import DecryptModal from '../components/DecryptModal';
 import ProfileModal from '../components/ProfileModal';
@@ -35,13 +36,13 @@ export default function Dashboard() {
         }
       }
     };
-    
+
     const fetchUser = async () => {
       try {
         const keys = await fetchMyKeys();
         setUsername(keys.username || 'User');
         setCurrentUserId(keys.user_id);
-      } catch (err) {}
+      } catch (err) { }
     };
 
     fetchDocs();
@@ -66,7 +67,10 @@ export default function Dashboard() {
   return (
     <div className="dashboard-container">
       <div className="nav-bar">
-        <h2 className="gradient-text">Akatsuki</h2>
+        <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src={logo} alt="Akatsuki Logo" style={{ width: '32px', height: '32px' }} />
+          <h2 className="gradient-text" style={{ margin: 0 }}>Akatsuki</h2>
+        </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
             Welcome, <strong style={{ color: 'white' }}>{username}</strong>
@@ -86,7 +90,7 @@ export default function Dashboard() {
             <h3>My Documents</h3>
             {!unlockedPrivateKey && documents.length > 0 && (
               <button className="btn" style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', padding: '6px 12px', fontSize: '0.875rem' }} onClick={() => setShowUnlock(true)}>
-                🔓 Unlock Vault to view filenames
+                Unlock Vault to view filenames
               </button>
             )}
           </div>
@@ -107,7 +111,7 @@ export default function Dashboard() {
                     {unlockedNames[doc.id] || (doc.encrypted_filename && doc.encrypted_filename.includes(':') ? 'Encrypted File' : (doc.encrypted_filename || 'Encrypted File'))}
                   </span>
                   <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
-                    {doc.owner === currentUserId ? 'Sent: ' : 'Received: '} 
+                    {doc.owner === currentUserId ? 'Sent: ' : 'Received: '}
                     {new Date(doc.created_at).toLocaleString()}
                   </span>
                 </div>
@@ -143,7 +147,7 @@ export default function Dashboard() {
       )}
 
       {showUnlock && (
-        <UnlockVaultModal 
+        <UnlockVaultModal
           documents={documents}
           onClose={() => setShowUnlock(false)}
           onUnlocked={(names, privKey) => {

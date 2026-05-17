@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import encryptionGif from '../assets/encryption.gif';
+import logo from '../assets/vite.svg';
 import { fetchMyKeys } from '../api/documents';
 import { logoutUser } from '../api/auth';
 import ProfileModal from '../components/ProfileModal';
@@ -37,7 +38,10 @@ export default function Home() {
     <div className="home-container">
       {/* Navigation */}
       <nav className="nav-bar home-nav">
-        <h2 className="gradient-text" style={{ margin: 0 }}>Akatsuki</h2>
+        <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src={logo} alt="Akatsuki Logo" style={{ width: '32px', height: '32px' }} />
+          <h2 className="gradient-text" style={{ margin: 0 }}>Akatsuki 暁</h2>
+        </Link>
         <div>
           {isLoggedIn ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -65,10 +69,10 @@ export default function Home() {
       <section className="hero-section">
         <div className="hero-content">
           <h1 className="hero-title">
-            Akatsuki
+            Akatsuki 暁
           </h1>
           <p className="hero-subtitle">
-            The ultimate zero-knowledge, End-to-End Encrypted document sharing platform. 
+            The ultimate zero-knowledge, End-to-End Encrypted document sharing platform.
             Protect your sensitive data with military-grade cryptography right from your browser.
           </p>
           <div className="hero-actions">
@@ -88,13 +92,13 @@ export default function Home() {
       {/* Features Section */}
       <section className="features-section">
         <h2 style={{ textAlign: 'center', marginBottom: '50px', fontSize: '2.5rem' }}>Why Choose Akatsuki?</h2>
-        
+
         <div className="features-grid">
           <div className="glass-panel feature-card">
             <div className="feature-icon">🔒</div>
             <h3>True Zero-Knowledge</h3>
             <p>
-              Your data is encrypted locally using AES-256-GCM before it ever leaves your device. 
+              Your data is encrypted locally using AES-256-GCM before it ever leaves your device.
               The server only sees ciphertext and cannot access your files or your keys.
             </p>
           </div>
@@ -112,7 +116,7 @@ export default function Home() {
             <div className="feature-icon">🛡️</div>
             <h3>Metadata Protection</h3>
             <p>
-              Unlike standard platforms, Akatsuki encrypts your filenames and metadata. 
+              Unlike standard platforms, Akatsuki encrypts your filenames and metadata.
               Only you and your intended recipient can decrypt and view the original file details.
             </p>
           </div>
