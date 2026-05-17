@@ -65,3 +65,15 @@ export const uploadEncryptedDocument = async (file, recipientId, recipientPublic
 
     return res.data;
 };
+
+export const fetchMyKeys = async () => {
+    const res = await axios.get(`${API_BASE}/keys/me/`, { headers: getAuthHeaders() });
+    return res.data;
+};
+
+export const downloadCiphertext = async (url) => {
+    const res = await axios.get(url, {
+        responseType: 'arraybuffer'
+    });
+    return res.data;
+};

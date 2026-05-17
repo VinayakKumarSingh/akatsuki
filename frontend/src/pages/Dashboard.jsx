@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { logoutUser } from '../api/auth';
 import axios from 'axios';
 import UploadModal from '../components/UploadModal';
+import DecryptModal from '../components/DecryptModal';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
+  const [decryptDoc, setDecryptDoc] = useState(null);
 
   useEffect(() => {
     // Basic fetch just to ensure routing and API connection works
@@ -66,8 +68,12 @@ export default function Dashboard() {
           <div>
             {documents.map(doc => (
               <div key={doc.id} style={{ padding: '16px', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{doc.encrypted_filename || 'Encrypted File'}</span>
-                <button className="btn" style={{ padding: '6px 12px', fontSize: '0.875rem', background: 'rgba(99, 102, 241, 0.2)' }}>
+                <span>{doc.encrypted_filename && doc.encrypted_filename.includes(':') ? 'Encrypted File' : (doc.encrypted_filename || 'Encrypted File')}</span>
+                <button 
+                  className="btn" 
+                  style={{ padding: '6px 12px', fontSize: '0.875rem', background: 'rgba(99, 102, 241, 0.2)' }}
+                  onClick={() => setDecryptDoc(doc)}
+                >
                   Decrypt & Download
                 </button>
               </div>
@@ -83,6 +89,13 @@ export default function Dashboard() {
             setShowUpload(false);
             fetchDocs();
           }} 
+        />
+      )}
+
+      {decryptDoc && (
+        <DecryptModal 
+          document={decryptDoc} 
+          onClose={() => setDecryptDoc(null)} 
         />
       )}
     </div>

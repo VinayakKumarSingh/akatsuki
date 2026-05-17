@@ -7,9 +7,9 @@
 export const arrayBufferToBase64 = (buffer) => {
     let binary = '';
     const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
     }
     return window.btoa(binary);
 };
@@ -190,4 +190,12 @@ export const decryptAESKeyWithRSA = async (encryptedAESBase64, rsaPrivateKey) =>
 
 export const generateSalt = () => {
     return arrayBufferToBase64(window.crypto.getRandomValues(new Uint8Array(16)));
+};
+
+// 12. Decrypt String (like filename)
+export const decryptString = async (encryptedBase64, ivBase64, aesKey) => {
+    const encryptedBuffer = base64ToArrayBuffer(encryptedBase64);
+    const decryptedBuffer = await decryptFile(encryptedBuffer, ivBase64, aesKey);
+    const dec = new TextDecoder();
+    return dec.decode(decryptedBuffer);
 };
