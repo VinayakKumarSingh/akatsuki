@@ -8,7 +8,7 @@ The application utilizes a powerful hybrid cryptographic architecture combining 
 
 ---
 
-## 🔒 Key Features
+##  Key Features
 
 ### 1. True Zero-Knowledge Architecture
 All encryption and decryption happens locally in your browser using the Native Web Crypto API. The server only ever receives and stores indistinguishable ciphertexts.
@@ -26,7 +26,7 @@ Built with React and Vite, the frontend features a sleek, dark-mode glassmorphis
 
 ---
 
-## 📸 Screenshots
+##  Screenshots
 
 ### Dashboard & Vault
 ![Dashboard](./dashboard.png)
@@ -39,14 +39,14 @@ Built with React and Vite, the frontend features a sleek, dark-mode glassmorphis
 
 ---
 
-## 🛠️ Technology Stack
+##  Technology Stack
 
 - **Frontend**: React.js, Vite, Vanilla CSS, Web Crypto API (for native browser cryptography), Axios.
 - **Backend**: Django, Django REST Framework, SimpleJWT (for authentication), SQLite (default).
 
 ---
 
-## 🚀 How to Run Locally
+##  How to Run Locally
 
 ### Prerequisites
 - Python 3.10+
@@ -92,7 +92,7 @@ The frontend will start running on `http://localhost:5173`.
 
 ---
 
-## 🛡️ Security Considerations & Flow
+##  Security Considerations & Flow
 1. **Registration**: Your browser generates an RSA-OAEP key pair. The private key is encrypted with a PBKDF2 derivative of your password. Only the public key and the encrypted private key are sent to the server.
 2. **Uploading**: A random AES-256-GCM key is generated. The file and filename are encrypted with this AES key. The AES key is then encrypted with the recipient's RSA Public Key (and your own, so you can read it later).
 3. **Downloading**: You enter your Master Password to locally unwrap your RSA Private Key. Your RSA Private Key decrypts the AES key. The AES key decrypts the file bytes and triggers a secure local browser download.
