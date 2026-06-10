@@ -10,7 +10,7 @@ import {
 
 const API_BASE = '/api/auth';
 
-export const registerUser = async (username, password) => {
+export const registerUser = async (username, password, securityQuestion, securityAnswer) => {
     // 1. Generate local RSA keys
     const rsaKeyPair = await generateRSAKeyPair();
     
@@ -27,13 +27,26 @@ export const registerUser = async (username, password) => {
     // Combine IV and encrypted private key for storage (Format: iv:encrypted_data)
     const storedPrivateKey = `${iv}:${encryptedPrivateKey}`;
 
-    // 5. Send to server
+    // 5. Generate recovery salt & derive key from normalized security answer to wrap recovery private key
+    const normalizedAnswer = securityAnswer.toLowerCase().replace(/\s+/g, '');
+    const recoverySaltStr = generateSalt();
+    const recoverySaltBuffer = window.atob(recoverySaltStr).split('').map(c => c.charCodeAt(0));
+    const recoveryDerivedKey = await deriveKeyFromPassword(normalizedAnswer, new Uint8Array(recoverySaltBuffer).buffer);
+
+    const { encryptedPrivateKey: recoveryEncPrivateKey, iv: recoveryIv } = await wrapPrivateKey(rsaKeyPair.privateKey, recoveryDerivedKey);
+    const storedPrivateKeyRecovery = `${recoveryIv}:${recoveryEncPrivateKey}`;
+
+    // 6. Send to server
     const payload = {
         username,
         password, // Used by Django to verify auth/generate JWT, not for decrypting our keys
         salt: saltStr,
         rsa_public_key: rsaPublicKeyStr,
         encrypted_rsa_private_key: storedPrivateKey,
+        security_question: securityQuestion,
+        security_answer: securityAnswer,
+        recovery_salt: recoverySaltStr,
+        encrypted_rsa_private_key_recovery: storedPrivateKeyRecovery
     };
 
     const response = await axios.post(`${API_BASE}/register/`, payload);
@@ -85,5 +98,27 @@ export const changePassword = async (oldPassword, newPassword, myKeys) => {
     const response = await axios.post(`${API_BASE}/change-password/`, payload, {
         headers: { Authorization: `Bearer ${token}` }
     });
+    return response.data;
+};
+
+export const getSecurityQuestion = async (username) => {
+    const response = await axios.post(`${API_BASE}/forgot-password/question/`, { username });
+    return response.data; // { security_question }
+};
+
+export const verifySecurityAnswer = async (username, securityAnswer) => {
+    const response = await axios.post(`${API_BASE}/forgot-password/verify/`, { username, security_answer: securityAnswer });
+    return response.data; // { recovery_salt, encrypted_rsa_private_key_recovery }
+};
+
+export const resetPasswordWithRecovery = async (username, securityAnswer, newPassword, newSalt, newEncryptedPrivateKey) => {
+    const payload = {
+        username,
+        security_answer: securityAnswer,
+        new_password: newPassword,
+        new_salt: newSalt,
+        new_encrypted_rsa_private_key: newEncryptedPrivateKey
+    };
+    const response = await axios.post(`${API_BASE}/forgot-password/reset/`, payload);
     return response.data;
 };

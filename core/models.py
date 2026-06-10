@@ -13,6 +13,10 @@ class UserKeys(models.Model):
     rsa_public_key = models.TextField() # Plaintext PEM
     encrypted_rsa_private_key = models.TextField() # Encrypted with user's password
     encrypted_abe_secret_key = models.TextField(null=True, blank=True) # Encrypted with user's RSA public key
+    security_question = models.CharField(max_length=255, blank=True, null=True)
+    security_answer_hash = models.CharField(max_length=255, blank=True, null=True)
+    recovery_salt = models.CharField(max_length=128, blank=True, null=True)
+    encrypted_rsa_private_key_recovery = models.TextField(blank=True, null=True)
 
 class Document(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
