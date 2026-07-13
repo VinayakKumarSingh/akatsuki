@@ -201,3 +201,104 @@ export const decryptString = async (encryptedBase64, ivBase64, aesKey) => {
     const dec = new TextDecoder();
     return dec.decode(decryptedBuffer);
 };
+
+// 13. Hybrid Encrypt Audit Log String using RSA Public Key
+export const encryptAuditLog = async (logText, rsaPublicKey) => {
+    const enc = new TextEncoder();
+    const dataBuffer = enc.encode(logText);
+    const aesKey = await generateAESKey();
+    const { ciphertext, iv } = await encryptFile(dataBuffer, aesKey);
+    const ciphertextBase64 = arrayBufferToBase64(ciphertext);
+    const wrappedKey = await encryptAESKeyWithRSA(aesKey, rsaPublicKey);
+    return `${wrappedKey}:${iv}:${ciphertextBase64}`;
+};
+
+// 14. Hybrid Decrypt Audit Log String using RSA Private Key
+export const decryptAuditLog = async (encryptedPayload, rsaPrivateKey) => {
+    const [wrappedKey, iv, ciphertextBase64] = encryptedPayload.split(':');
+    if (!wrappedKey || !iv || !ciphertextBase64) {
+        throw new Error("Invalid encrypted payload format.");
+    }
+    const aesKey = await decryptAESKeyWithRSA(wrappedKey, rsaPrivateKey);
+    const ciphertextBuffer = base64ToArrayBuffer(ciphertextBase64);
+    const decryptedBuffer = await decryptFile(ciphertextBuffer, iv, aesKey);
+    const dec = new TextEncoder();
+    return new TextDecoder().decode(decryptedBuffer);
+};
+
+// 15. Generate Group Symmetric Vault Key
+export const generateGroupKey = async () => {
+    return await window.crypto.subtle.generateKey(
+        {
+            name: "AES-GCM",
+            length: 256,
+        },
+        true,
+        ["encrypt", "decrypt"]
+    );
+};
+
+// 16. Encrypt Group Key with RSA Public Key
+export const encryptGroupKeyWithRSA = async (groupKey, rsaPublicKey) => {
+    const exported = await window.crypto.subtle.exportKey("raw", groupKey);
+    const encrypted = await window.crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        rsaPublicKey,
+        exported
+    );
+    return arrayBufferToBase64(encrypted);
+};
+
+// 17. Decrypt Group Key with RSA Private Key
+export const decryptGroupKeyWithRSA = async (encryptedGroupKeyBase64, rsaPrivateKey) => {
+    const encrypted = base64ToArrayBuffer(encryptedGroupKeyBase64);
+    const decryptedRaw = await window.crypto.subtle.decrypt(
+        { name: "RSA-OAEP" },
+        rsaPrivateKey,
+        encrypted
+    );
+    return await window.crypto.subtle.importKey(
+        "raw",
+        decryptedRaw,
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
+};
+
+// 18. Encrypt AES Key with Group Key
+export const encryptAESKeyWithGroupKey = async (aesKey, groupKey) => {
+    const rawAESKey = await window.crypto.subtle.exportKey("raw", aesKey);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await window.crypto.subtle.encrypt(
+        {
+            name: "AES-GCM",
+            iv: iv
+        },
+        groupKey,
+        rawAESKey
+    );
+    return `${arrayBufferToBase64(iv)}:${arrayBufferToBase64(ciphertext)}`;
+};
+
+// 19. Decrypt AES Key with Group Key
+export const decryptAESKeyWithGroupKey = async (encryptedKeyString, groupKey) => {
+    const [ivBase64, ciphertextBase64] = encryptedKeyString.split(':');
+    const iv = base64ToArrayBuffer(ivBase64);
+    const ciphertext = base64ToArrayBuffer(ciphertextBase64);
+    const decryptedRaw = await window.crypto.subtle.decrypt(
+        {
+            name: "AES-GCM",
+            iv: iv
+        },
+        groupKey,
+        ciphertext
+    );
+    return await window.crypto.subtle.importKey(
+        "raw",
+        decryptedRaw,
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
+};

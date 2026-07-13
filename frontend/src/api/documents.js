@@ -4,7 +4,8 @@ import {
   encryptFile,
   encryptAESKeyWithRSA,
   importPublicKey,
-  arrayBufferToBase64
+  arrayBufferToBase64,
+  encryptAuditLog
 } from '../utils/crypto';
 
 const API_BASE = '/api';
@@ -20,7 +21,7 @@ export const fetchPublicUsers = async () => {
     return res.data;
 };
 
-export const uploadEncryptedDocument = async (file, recipientId, recipientPublicKeyJwkStr) => {
+export const uploadEncryptedDocument = async (file, recipientId, recipientPublicKeyJwkStr, permissions = 'DOWNLOAD', documentId = null) => {
     // 1. Generate AES Key
     const aesKey = await generateAESKey();
 
@@ -29,7 +30,6 @@ export const uploadEncryptedDocument = async (file, recipientId, recipientPublic
     const { ciphertext, iv } = await encryptFile(fileBuffer, aesKey);
 
     // 3. Encrypt Filename (for privacy)
-    // We reuse encryptFile logic for strings by encoding it
     const enc = new TextEncoder();
     const nameBuffer = enc.encode(file.name);
     const { ciphertext: encNameBuffer, iv: nameIv } = await encryptFile(nameBuffer, aesKey);
@@ -43,29 +43,32 @@ export const uploadEncryptedDocument = async (file, recipientId, recipientPublic
         {
             key_type: 'RSA',
             recipient_id: recipientId,
-            encrypted_key: encryptedAESKey
+            encrypted_key: encryptedAESKey,
+            permissions: permissions
         }
     ];
 
-    // 4b. Also encrypt the AES Key with the Sender's (our own) RSA Public Key
-    // so the sender can decrypt and read the file they just uploaded!
+    // 4b. Also encrypt the AES Key with the Sender's RSA Public Key
     const myKeys = await fetchMyKeys();
     const myPubKey = await importPublicKey(myKeys.rsa_public_key);
     const myEncryptedAESKey = await encryptAESKeyWithRSA(aesKey, myPubKey);
     
     keys.push({
         key_type: 'RSA',
-        // recipient_id: null, (Django will just ignore or we don't provide it, but it's better to provide it if we have it. Wait, fetchMyKeys doesn't return user_id right now. But we can just omit recipient_id, and it will be null, and the sender can still iterate and decrypt it!)
-        encrypted_key: myEncryptedAESKey
+        encrypted_key: myEncryptedAESKey,
+        permissions: 'DOWNLOAD' // Sender always has download permissions
     });
 
     // 5. Upload via FormData
     const formData = new FormData();
     const encryptedBlob = new Blob([ciphertext], { type: 'application/octet-stream' });
-    formData.append('file_path', encryptedBlob, 'encrypted.bin');
+    formData.append('file', encryptedBlob, 'encrypted.bin');
     formData.append('encrypted_filename', encryptedFilename);
     formData.append('iv', iv);
     formData.append('keys', JSON.stringify(keys));
+    if (documentId) {
+        formData.append('document_id', documentId);
+    }
 
     const res = await axios.post(`${API_BASE}/documents/`, formData, {
         headers: {
@@ -82,9 +85,104 @@ export const fetchMyKeys = async () => {
     return res.data;
 };
 
-export const downloadCiphertext = async (url) => {
-    const res = await axios.get(url, {
-        responseType: 'arraybuffer'
+export const downloadCiphertext = async (docId, versionId = null) => {
+    const url = versionId 
+        ? `${API_BASE}/documents/${docId}/download/?version_id=${versionId}`
+        : `${API_BASE}/documents/${docId}/download/`;
+    const res = await axios.get(url, { 
+        headers: getAuthHeaders(),
+        responseType: 'arraybuffer' 
     });
+    return res.data;
+};
+
+// Access Requests Workflow
+export const requestAccess = async (docId) => {
+    const res = await axios.post(`${API_BASE}/documents/${docId}/request-access/`, {}, { headers: getAuthHeaders() });
+    return res.data;
+};
+
+export const fetchPendingRequests = async () => {
+    const res = await axios.get(`${API_BASE}/requests/pending/`, { headers: getAuthHeaders() });
+    return res.data;
+};
+
+export const approveAccessRequest = async (reqId, encryptedKey, permissions = 'DOWNLOAD') => {
+    const res = await axios.post(`${API_BASE}/requests/${reqId}/approve/`, {
+        encrypted_key: encryptedKey,
+        permissions: permissions
+    }, { headers: getAuthHeaders() });
+    return res.data;
+};
+
+export const denyAccessRequest = async (reqId) => {
+    const res = await axios.post(`${API_BASE}/requests/${reqId}/deny/`, {}, { headers: getAuthHeaders() });
+    return res.data;
+};
+
+// Audit Log Helpers
+export const createAuditLog = async (action, documentId, detailsStr) => {
+    try {
+        const myKeys = await fetchMyKeys();
+        const pubKey = await importPublicKey(myKeys.rsa_public_key);
+        const payload = JSON.stringify({
+            action,
+            document_id: documentId,
+            details: detailsStr,
+            timestamp: new Date().toISOString()
+        });
+        const encryptedLog = await encryptAuditLog(payload, pubKey);
+        
+        await axios.post(`${API_BASE}/audit-logs/`, {
+            encrypted_log: encryptedLog
+        }, { headers: getAuthHeaders() });
+    } catch (err) {
+        console.error("Failed to create audit log", err);
+    }
+};
+
+export const fetchAuditLogs = async () => {
+    const res = await axios.get(`${API_BASE}/audit-logs/`, { headers: getAuthHeaders() });
+    return res.data;
+};
+
+// Zero-Knowledge Document Version Upload Helper
+export const uploadDocumentVersion = async (file, documentId, recipientKeys) => {
+    const aesKey = await generateAESKey();
+    const fileBuffer = await file.arrayBuffer();
+    const { ciphertext, iv } = await encryptFile(fileBuffer, aesKey);
+
+    const enc = new TextEncoder();
+    const nameBuffer = enc.encode(file.name);
+    const { ciphertext: encNameBuffer, iv: nameIv } = await encryptFile(nameBuffer, aesKey);
+    const encryptedFilename = `${nameIv}:${arrayBufferToBase64(encNameBuffer)}`;
+
+    const wrappedKeys = [];
+    for (const keyInfo of recipientKeys) {
+        const pubKey = await importPublicKey(keyInfo.rsa_public_key);
+        const encryptedAESKey = await encryptAESKeyWithRSA(aesKey, pubKey);
+        wrappedKeys.push({
+            key_type: 'RSA',
+            recipient_id: keyInfo.recipient_id,
+            encrypted_key: encryptedAESKey,
+            permissions: keyInfo.permissions
+        });
+    }
+
+    const formData = new FormData();
+    const encryptedBlob = new Blob([ciphertext], { type: 'application/octet-stream' });
+    formData.append('file', encryptedBlob, 'encrypted.bin');
+    formData.append('encrypted_filename', encryptedFilename);
+    formData.append('iv', iv);
+    formData.append('keys', JSON.stringify(wrappedKeys));
+    formData.append('document_id', documentId);
+
+    const res = await axios.post(`${API_BASE}/documents/`, formData, {
+        headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'multipart/form-data'
+        }
+    });
+
     return res.data;
 };

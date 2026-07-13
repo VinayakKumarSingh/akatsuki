@@ -40,8 +40,12 @@ export const registerUser = async (username, password) => {
     return response.data;
 };
 
-export const loginUser = async (username, password) => {
-    const response = await axios.post(`${API_BASE}/login/`, { username, password });
+export const loginUser = async (username, password, otpCode = null) => {
+    const payload = { username, password };
+    if (otpCode) {
+        payload.otp_code = otpCode;
+    }
+    const response = await axios.post(`${API_BASE}/login/`, payload);
     if (response.data.access) {
         localStorage.setItem('access_token', response.data.access);
         localStorage.setItem('refresh_token', response.data.refresh);

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import UserKeys, Document, DocumentAccessKey
+from .models import UserKeys, Document, DocumentVersion, DocumentAccessKey, DocumentAccessRequest, AuditLog, Group, GroupMembership
 
 User = get_user_model()
 
@@ -40,17 +40,57 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserKeysSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserKeys
-        fields = ['salt', 'rsa_public_key', 'encrypted_rsa_private_key', 'encrypted_abe_secret_key']
+        fields = ['salt', 'rsa_public_key', 'encrypted_rsa_private_key', 'encrypted_abe_secret_key', 'otp_enabled']
 
 class DocumentAccessKeySerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentAccessKey
-        fields = ['id', 'recipient', 'key_type', 'encrypted_key']
+        fields = ['id', 'recipient', 'group', 'key_type', 'encrypted_key', 'permissions']
 
-class DocumentSerializer(serializers.ModelSerializer):
+class DocumentVersionSerializer(serializers.ModelSerializer):
     access_keys = DocumentAccessKeySerializer(many=True, read_only=True)
     
     class Meta:
+        model = DocumentVersion
+        fields = ['id', 'version_number', 'file_path', 'iv', 'created_at', 'access_keys']
+
+class DocumentSerializer(serializers.ModelSerializer):
+    versions = DocumentVersionSerializer(many=True, read_only=True)
+    
+    class Meta:
         model = Document
-        fields = ['id', 'owner', 'file_path', 'encrypted_filename', 'iv', 'created_at', 'policy_string', 'access_keys']
+        fields = ['id', 'owner', 'encrypted_filename', 'created_at', 'policy_string', 'versions']
         read_only_fields = ['owner']
+
+class DocumentAccessRequestSerializer(serializers.ModelSerializer):
+    requester_username = serializers.CharField(source='requester.username', read_only=True)
+    document_owner = serializers.CharField(source='document.owner.username', read_only=True)
+    
+    class Meta:
+        model = DocumentAccessRequest
+        fields = ['id', 'document', 'requester', 'requester_username', 'document_owner', 'status', 'created_at']
+        read_only_fields = ['requester', 'status']
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AuditLog
+        fields = ['id', 'user', 'encrypted_log', 'created_at']
+        read_only_fields = ['user']
+
+class GroupMembershipSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = GroupMembership
+        fields = ['id', 'user', 'username', 'encrypted_group_key', 'role', 'created_at']
+        read_only_fields = ['role', 'created_at']
+
+class GroupSerializer(serializers.ModelSerializer):
+    memberships = GroupMembershipSerializer(many=True, read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    
+    class Meta:
+        model = Group
+        fields = ['id', 'name', 'created_by', 'created_by_username', 'created_at', 'memberships']
+        read_only_fields = ['created_by', 'created_at']
+

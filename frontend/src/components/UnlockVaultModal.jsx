@@ -38,9 +38,15 @@ export default function UnlockVaultModal({ documents, onClose, onUnlocked }) {
       for (const doc of documents) {
         if (!doc.encrypted_filename || !doc.encrypted_filename.includes(':')) continue;
 
-        // Find the right access key
+        const versions = doc.versions || [];
+        const latestVersion = versions.length > 0
+          ? [...versions].sort((a, b) => b.version_number - a.version_number)[0]
+          : null;
+        
+        if (!latestVersion) continue;
+
         let aesKey = null;
-        for (const keyObj of doc.access_keys) {
+        for (const keyObj of (latestVersion.access_keys || [])) {
           if (keyObj.key_type === 'RSA') {
             try {
               aesKey = await decryptAESKeyWithRSA(keyObj.encrypted_key, rsaPrivateKey);

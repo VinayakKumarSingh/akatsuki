@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fetchMyKeys, downloadCiphertext } from '../api/documents';
+import { fetchMyKeys, downloadCiphertext, createAuditLog } from '../api/documents';
 import {
   deriveKeyFromPassword,
   unwrapPrivateKey,
@@ -46,9 +46,18 @@ export default function DecryptModal({ document, cachedPrivateKey, onClose }) {
         rsaPrivateKey = await unwrapPrivateKey(privEncBase64, privIvBase64, derivedKey);
       }
 
-      // 4. Find the correct Access Key for this document
+      const versions = document.versions || [];
+      const latestVersion = versions.length > 0
+        ? [...versions].sort((a, b) => b.version_number - a.version_number)[0]
+        : null;
+
+      if (!latestVersion) {
+        throw new Error("No version exists for this document.");
+      }
+
+      // 4. Find the correct Access Key for this version
       let aesKey = null;
-      for (const keyObj of document.access_keys) {
+      for (const keyObj of (latestVersion.access_keys || [])) {
         if (keyObj.key_type === 'RSA') {
           try {
             aesKey = await decryptAESKeyWithRSA(keyObj.encrypted_key, rsaPrivateKey);
@@ -64,11 +73,11 @@ export default function DecryptModal({ document, cachedPrivateKey, onClose }) {
         throw new Error("Could not decrypt the AES key. Are you sure you are the recipient? Detailed error logged to console.");
       }
 
-      // 5. Download Ciphertext
-      const ciphertextBuffer = await downloadCiphertext(document.file_path);
+      // 5. Download Ciphertext using document ID (auth-checked detail route)
+      const ciphertextBuffer = await downloadCiphertext(document.id, latestVersion.id);
 
       // 6. Decrypt File
-      const decryptedBuffer = await decryptFile(ciphertextBuffer, document.iv, aesKey);
+      const decryptedBuffer = await decryptFile(ciphertextBuffer, latestVersion.iv, aesKey);
 
       // 7. Decrypt Filename
       let originalFilename = "decrypted_file.bin";
@@ -87,6 +96,9 @@ export default function DecryptModal({ document, cachedPrivateKey, onClose }) {
       a.click();
       window.document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      // Create encrypted audit log
+      await createAuditLog("DOWNLOAD", document.id, `Decrypted and downloaded file: ${originalFilename}`);
 
       setSuccessMsg('Decryption successful! File is downloading.');
       setTimeout(onClose, 2000);
