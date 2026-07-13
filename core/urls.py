@@ -4,7 +4,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     RegisterView, KeyMeView, PublicKeyListView, ABEParametersView, DocumentViewSet, change_password,
     request_access, list_pending_requests, approve_request, deny_request,
-    CustomTokenObtainPairView, setup_2fa, verify_2fa, disable_2fa, AuditLogViewSet, GroupViewSet
+    CustomTokenObtainPairView, setup_2fa, verify_2fa, disable_2fa, AuditLogViewSet, GroupViewSet,
+    get_security_question, verify_security_answer, reset_password_with_recovery
 )
 
 router = DefaultRouter()
@@ -18,6 +19,9 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('keys/me/', KeyMeView.as_view(), name='key_me'),
     path('auth/change-password/', change_password, name='change_password'),
+    path('auth/forgot-password/question/', get_security_question, name='forgot_password_question'),
+    path('auth/forgot-password/verify/', verify_security_answer, name='forgot_password_verify'),
+    path('auth/forgot-password/reset/', reset_password_with_recovery, name='forgot_password_reset'),
     path('keys/public/', PublicKeyListView.as_view(), name='public_keys'),
     path('keys/abe/parameters/', ABEParametersView.as_view(), name='abe_parameters'),
     

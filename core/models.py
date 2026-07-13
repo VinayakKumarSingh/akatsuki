@@ -15,6 +15,10 @@ class UserKeys(models.Model):
     encrypted_abe_secret_key = models.TextField(null=True, blank=True) # Encrypted with user's RSA public key
     otp_secret = models.CharField(max_length=32, blank=True, null=True)
     otp_enabled = models.BooleanField(default=False)
+    security_question = models.CharField(max_length=255, blank=True, null=True)
+    security_answer_hash = models.CharField(max_length=255, blank=True, null=True)
+    recovery_salt = models.CharField(max_length=128, blank=True, null=True)
+    encrypted_rsa_private_key_recovery = models.TextField(blank=True, null=True)
 
 class Document(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

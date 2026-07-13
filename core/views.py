@@ -588,4 +588,74 @@ class AuditLogViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+from django.contrib.auth.hashers import check_password
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def get_security_question(request):
+    username = request.data.get('username')
+    if not username:
+        return Response({"error": "Username is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(username=username)
+        keys = user.keys
+        if not keys.security_question:
+            return Response({"error": "Security question not set for this user"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"security_question": keys.security_question})
+    except (User.DoesNotExist, UserKeys.DoesNotExist):
+        return Response({"error": "User or security question not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_security_answer(request):
+    username = request.data.get('username')
+    security_answer = request.data.get('security_answer')
+    if not username or not security_answer:
+        return Response({"error": "Username and security answer are required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(username=username)
+        keys = user.keys
+        
+        normalized_answer = "".join(security_answer.lower().split())
+        if not keys.security_answer_hash or not check_password(normalized_answer, keys.security_answer_hash):
+            return Response({"error": "Incorrect security answer"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response({
+            "recovery_salt": keys.recovery_salt,
+            "encrypted_rsa_private_key_recovery": keys.encrypted_rsa_private_key_recovery
+        })
+    except (User.DoesNotExist, UserKeys.DoesNotExist):
+        return Response({"error": "User or security question not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reset_password_with_recovery(request):
+    username = request.data.get('username')
+    security_answer = request.data.get('security_answer')
+    new_password = request.data.get('new_password')
+    new_salt = request.data.get('new_salt')
+    new_encrypted_rsa_private_key = request.data.get('new_encrypted_rsa_private_key')
+    
+    if not all([username, security_answer, new_password, new_salt, new_encrypted_rsa_private_key]):
+        return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        user = User.objects.get(username=username)
+        keys = user.keys
+        
+        normalized_answer = "".join(security_answer.lower().split())
+        if not keys.security_answer_hash or not check_password(normalized_answer, keys.security_answer_hash):
+            return Response({"error": "Incorrect security answer"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user.set_password(new_password)
+        user.save()
+        
+        keys.salt = new_salt
+        keys.encrypted_rsa_private_key = new_encrypted_rsa_private_key
+        keys.save()
+        
+        return Response({"success": "Password reset successfully"})
+    except (User.DoesNotExist, UserKeys.DoesNotExist):
+        return Response({"error": "User or security question not found"}, status=status.HTTP_404_NOT_FOUND)

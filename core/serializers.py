@@ -9,20 +9,37 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'attributes']
 
+from django.contrib.auth.hashers import make_password
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     salt = serializers.CharField(write_only=True)
     rsa_public_key = serializers.CharField(write_only=True)
     encrypted_rsa_private_key = serializers.CharField(write_only=True)
+    security_question = serializers.CharField(write_only=True)
+    security_answer = serializers.CharField(write_only=True)
+    recovery_salt = serializers.CharField(write_only=True)
+    encrypted_rsa_private_key_recovery = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ['username', 'password', 'salt', 'rsa_public_key', 'encrypted_rsa_private_key']
+        fields = [
+            'username', 'password', 'salt', 'rsa_public_key', 'encrypted_rsa_private_key',
+            'security_question', 'security_answer', 'recovery_salt', 'encrypted_rsa_private_key_recovery'
+        ]
 
     def create(self, validated_data):
         salt = validated_data.pop('salt')
         rsa_pub = validated_data.pop('rsa_public_key')
         rsa_priv = validated_data.pop('encrypted_rsa_private_key')
+        security_q = validated_data.pop('security_question')
+        security_ans = validated_data.pop('security_answer')
+        recovery_s = validated_data.pop('recovery_salt')
+        rsa_priv_rec = validated_data.pop('encrypted_rsa_private_key_recovery')
+        
+        # Normalize security answer: lowercase and remove all whitespace
+        normalized_answer = "".join(security_ans.lower().split())
+        security_answer_hash = make_password(normalized_answer)
         
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -33,7 +50,11 @@ class RegisterSerializer(serializers.ModelSerializer):
             user=user,
             salt=salt,
             rsa_public_key=rsa_pub,
-            encrypted_rsa_private_key=rsa_priv
+            encrypted_rsa_private_key=rsa_priv,
+            security_question=security_q,
+            security_answer_hash=security_answer_hash,
+            recovery_salt=recovery_s,
+            encrypted_rsa_private_key_recovery=rsa_priv_rec
         )
         return user
 
