@@ -4,11 +4,13 @@ import {
   generateGroupKey, 
   encryptGroupKeyWithRSA, 
   decryptGroupKeyWithRSA, 
-  importPublicKey 
+  importPublicKey,
+  encryptAESKeyWithGroupKey,
+  decryptAESKeyWithGroupKey
 } from '../utils/crypto';
 import { fetchPublicUsers, fetchMyKeys } from '../api/documents';
 
-export default function GroupManagementModal({ unlockedPrivateKey, onClose }) {
+export default function GroupManagementModal({ unlockedPrivateKey, documents = [], onClose }) {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupName, setGroupName] = useState('');
@@ -137,22 +139,87 @@ export default function GroupManagementModal({ unlockedPrivateKey, onClose }) {
 
   const handleRemoveMember = async (userId) => {
     if (!selectedGroup) return;
-    if (!window.confirm("Are you sure you want to remove this member?")) return;
+    if (!window.confirm("Are you sure you want to remove this member? This will rotate the group symmetric key and re-encrypt all group-shared document keys client-side to maintain forward secrecy.")) return;
+
+    if (!unlockedPrivateKey) {
+      setError('Please unlock your private key first to perform key rotation.');
+      return;
+    }
 
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
+      const myKeys = await fetchMyKeys();
+      
+      // 1. Find my membership in the group to get my encrypted group key
+      const myMembership = selectedGroup.memberships.find(m => m.user === myKeys.user_id);
+      if (!myMembership) {
+        throw new Error("You are not a member of this group.");
+      }
+
+      // 2. Decrypt current group key using my private key
+      const currentGroupKey = await decryptGroupKeyWithRSA(myMembership.encrypted_group_key, unlockedPrivateKey);
+
+      // 3. Generate a brand new group key
+      const newGroupKey = await generateGroupKey();
+
+      // 4. Find all remaining group members
+      const remainingMemberships = selectedGroup.memberships.filter(m => m.user !== userId);
+      const remainingUserIds = remainingMemberships.map(m => m.user);
+
+      // 5. Fetch public keys of all remaining members from server
+      const publicKeysRes = await axios.get(`/api/keys/public/?user_ids=${remainingUserIds.join(',')}`, { headers });
+      
+      // 6. Encrypt the new group key for all remaining members
+      const newMembershipKeys = [];
+      for (const memberKeyObj of publicKeysRes.data) {
+        const memberPubKey = await importPublicKey(memberKeyObj.rsa_public_key);
+        const encryptedGroupKey = await encryptGroupKeyWithRSA(newGroupKey, memberPubKey);
+        newMembershipKeys.push({
+          user_id: memberKeyObj.user,
+          encrypted_group_key: encryptedGroupKey
+        });
+      }
+
+      // 7. Re-encrypt all document keys shared with this group
+      const newDocumentKeys = [];
+      for (const doc of documents) {
+        for (const version of (doc.versions || [])) {
+          for (const keyObj of (version.access_keys || [])) {
+            if (keyObj.key_type === 'GRP' && keyObj.group === selectedGroup.id) {
+              try {
+                // Decrypt the file AES key using the old group key
+                const aesKey = await decryptAESKeyWithGroupKey(keyObj.encrypted_key, currentGroupKey);
+                
+                // Re-encrypt the file AES key using the new group key
+                const newEncryptedKey = await encryptAESKeyWithGroupKey(aesKey, newGroupKey);
+                
+                newDocumentKeys.push({
+                  access_key_id: keyObj.id,
+                  encrypted_key: newEncryptedKey
+                });
+              } catch (e) {
+                console.error("Failed to rekey document version", version.id, e);
+              }
+            }
+          }
+        }
+      }
+
+      // 8. Submit removal and rotated keys to the server
       await axios.post(`/api/groups/${selectedGroup.id}/remove_member/`, {
-        user_id: userId
+        user_id: userId,
+        new_membership_keys: newMembershipKeys,
+        new_document_keys: newDocumentKeys
       }, { headers });
 
-      setSuccess('Member removed successfully.');
+      setSuccess('Member removed and group keys rotated successfully.');
       fetchGroups();
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.error || 'Failed to remove member.');
+      setError(err.message || 'Failed to remove member and rotate keys.');
     } finally {
       setLoading(false);
     }

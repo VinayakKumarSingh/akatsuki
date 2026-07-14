@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [username, setUsername] = useState('');
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [myGroups, setMyGroups] = useState([]);
   const [unlockedNames, setUnlockedNames] = useState({});
   const [unlockedPrivateKey, setUnlockedPrivateKey] = useState(null);
 
@@ -52,6 +53,7 @@ export default function Dashboard() {
     fetchDocs();
     fetchUser();
     fetchRequests();
+    fetchMyGroups();
   }, []);
 
   const fetchDocs = async () => {
@@ -73,6 +75,17 @@ export default function Dashboard() {
       const keys = await fetchMyKeys();
       setUsername(keys.username || 'User');
       setCurrentUserId(keys.user_id);
+      localStorage.setItem('user_id', keys.user_id);
+    } catch (err) { }
+  };
+
+  const fetchMyGroups = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get('/api/groups/', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMyGroups(res.data);
     } catch (err) { }
   };
 
@@ -88,7 +101,7 @@ export default function Dashboard() {
     navigate('/login');
   };
 
-  // Helper to determine permission level for current user
+  // Helper to determine permission level for current user (checks direct and group access)
   const getUserPermission = (doc) => {
     if (doc.owner === currentUserId) return 'OWNER';
     const versions = doc.versions || [];
@@ -96,8 +109,22 @@ export default function Dashboard() {
       ? [...versions].sort((a, b) => b.version_number - a.version_number)[0]
       : null;
     if (!latestVersion) return 'NONE';
-    const accessKey = (latestVersion.access_keys || []).find(k => k.recipient === currentUserId);
-    return accessKey ? accessKey.permissions : 'NONE';
+
+    // Find all access keys that apply to the current user
+    const applicableKeys = (latestVersion.access_keys || []).filter(k => {
+      if (k.recipient === currentUserId) return true;
+      if (k.key_type === 'GRP' && k.group && myGroups.some(g => g.id === k.group)) return true;
+      return false;
+    });
+
+    if (applicableKeys.length === 0) return 'NONE';
+
+    // Order of priority: SHARE > DOWNLOAD > VIEW_ONLY
+    const perms = applicableKeys.map(k => k.permissions);
+    if (perms.includes('SHARE')) return 'SHARE';
+    if (perms.includes('DOWNLOAD')) return 'DOWNLOAD';
+    if (perms.includes('VIEW_ONLY')) return 'VIEW_ONLY';
+    return 'NONE';
   };
 
   // Helper to determine the display name of a document
@@ -257,8 +284,8 @@ export default function Dashboard() {
       return;
     }
 
-    const permissions = window.prompt("Enter permission level for recipient (VIEW_ONLY, DOWNLOAD, SHARE):", "DOWNLOAD");
-    if (!permissions || !['VIEW_ONLY', 'DOWNLOAD', 'SHARE'].includes(permissions.toUpperCase())) {
+    const permissions = window.prompt("Enter permission level for recipient (VIEW_ONLY, DOWNLOAD):", "DOWNLOAD");
+    if (!permissions || !['VIEW_ONLY', 'DOWNLOAD'].includes(permissions.toUpperCase())) {
       alert("Invalid permission level entered.");
       return;
     }
@@ -569,7 +596,8 @@ export default function Dashboard() {
       {showGroups && (
         <GroupManagementModal
           unlockedPrivateKey={unlockedPrivateKey}
-          onClose={() => setShowGroups(false)}
+          documents={documents}
+          onClose={() => { setShowGroups(false); fetchMyGroups(); }}
         />
       )}
 
@@ -590,6 +618,7 @@ export default function Dashboard() {
           document={versionDoc}
           cachedPrivateKey={unlockedPrivateKey}
           currentUserId={currentUserId}
+          myGroups={myGroups}
           onClose={() => {
             setShowVersions(false);
             setVersionDoc(null);

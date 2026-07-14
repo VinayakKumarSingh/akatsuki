@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { fetchMyKeys } from '../api/documents';
 import {
   deriveKeyFromPassword,
   unwrapPrivateKey,
   decryptAESKeyWithRSA,
-  decryptString
+  decryptString,
+  decryptGroupKeyWithRSA,
+  decryptAESKeyWithGroupKey
 } from '../utils/crypto';
 
 export default function UnlockVaultModal({ documents, onClose, onUnlocked }) {
@@ -46,11 +49,27 @@ export default function UnlockVaultModal({ documents, onClose, onUnlocked }) {
         if (!latestVersion) continue;
 
         let aesKey = null;
+        const currentUserId = localStorage.getItem('user_id');
         for (const keyObj of (latestVersion.access_keys || [])) {
-          if (keyObj.key_type === 'RSA') {
+          if (keyObj.key_type === 'RSA' && keyObj.recipient === currentUserId) {
             try {
               aesKey = await decryptAESKeyWithRSA(keyObj.encrypted_key, rsaPrivateKey);
               break;
+            } catch (err) {
+              // Ignore wrong keys
+            }
+          } else if (keyObj.key_type === 'GRP' && keyObj.group) {
+            try {
+              const token = localStorage.getItem('access_token');
+              const res = await axios.get(`/api/groups/${keyObj.group}/`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              const myMembership = res.data.memberships.find(m => m.user === currentUserId);
+              if (myMembership) {
+                const groupSymmetricKey = await decryptGroupKeyWithRSA(myMembership.encrypted_group_key, rsaPrivateKey);
+                aesKey = await decryptAESKeyWithGroupKey(keyObj.encrypted_key, groupSymmetricKey);
+                break;
+              }
             } catch (err) {
               // Ignore wrong keys
             }
