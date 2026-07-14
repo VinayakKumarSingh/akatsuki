@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { changePassword } from '../api/auth';
 import { fetchMyKeys } from '../api/documents';
 import axios from 'axios';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function ProfileModal({ onClose }) {
   const [oldPassword, setOldPassword] = useState('');
@@ -214,11 +215,9 @@ export default function ProfileModal({ onClose }) {
               </p>
               
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '16px', gap: '12px' }}>
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(otpSetupUrl)}`} 
-                  alt="2FA QR Code" 
-                  style={{ borderRadius: '8px', border: '4px solid white', background: 'white', width: '180px', height: '180px' }}
-                />
+                <div style={{ borderRadius: '8px', border: '4px solid white', background: 'white', padding: '8px', width: '180px', height: '180px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  <QRCodeSVG value={otpSetupUrl} size={164} />
+                </div>
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px', width: '100%', wordBreak: 'break-all', fontSize: '0.85rem', border: '1px solid var(--glass-border)', textAlign: 'center' }}>
                   <strong style={{ color: '#fff' }}>Secret Key:</strong> <code style={{ color: 'var(--accent-color)' }}>{otpSecret}</code>
                 </div>

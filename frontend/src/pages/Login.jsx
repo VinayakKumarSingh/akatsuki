@@ -357,7 +357,6 @@ export default function Login() {
             </button>
           </div>
         )}
->>>>>>> 5082a02eaffde27072971fbcdbf431bd6e1a82e7
       </div>
     </div>
   );

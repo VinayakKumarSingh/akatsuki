@@ -388,7 +388,6 @@ export default function ManageAccessModal({ document, unlockedPrivateKey, onClos
                 >
                   <option value="VIEW_ONLY">View Only</option>
                   <option value="DOWNLOAD">Download</option>
-                  <option value="SHARE">Share</option>
                 </select>
 
                 <button type="submit" className="btn btn-primary" disabled={loading}>

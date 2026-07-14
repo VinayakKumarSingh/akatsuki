@@ -65,6 +65,18 @@ def change_password(request):
     new_salt = request.data.get('new_salt')
     new_encrypted_rsa_private_key = request.data.get('new_encrypted_rsa_private_key')
 
+    if not old_password or not new_password or not new_salt or not new_encrypted_rsa_private_key:
+        return Response({"error": "All fields (old_password, new_password, new_salt, new_encrypted_rsa_private_key) are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if len(str(new_password)) < 8:
+        return Response({"error": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not isinstance(new_salt, str) or len(new_salt.strip()) == 0:
+        return Response({"error": "Invalid salt format."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not isinstance(new_encrypted_rsa_private_key, str) or ":" not in new_encrypted_rsa_private_key:
+        return Response({"error": "Invalid encrypted private key format. Must be formatted as iv:ciphertext."}, status=status.HTTP_400_BAD_REQUEST)
+
     if not user.check_password(old_password):
         return Response({"error": "Incorrect old password"}, status=status.HTTP_400_BAD_REQUEST)
     
@@ -176,7 +188,24 @@ class GroupViewSet(viewsets.ModelViewSet):
                 return Response({"error": "Cannot remove the only administrator."}, status=status.HTTP_400_BAD_REQUEST)
 
         group.memberships.filter(user=member).delete()
-        return Response({"success": "Member removed successfully."})
+
+        # Update remaining membership keys (Group Key Rotation)
+        new_membership_keys = request.data.get('new_membership_keys', [])
+        for mk in new_membership_keys:
+            uid = mk.get('user_id')
+            enc_key = mk.get('encrypted_group_key')
+            if uid and enc_key:
+                group.memberships.filter(user_id=uid).update(encrypted_group_key=enc_key)
+
+        # Update document access keys for the rotated group key
+        new_document_keys = request.data.get('new_document_keys', [])
+        for dk in new_document_keys:
+            ak_id = dk.get('access_key_id')
+            enc_key = dk.get('encrypted_key')
+            if ak_id and enc_key:
+                DocumentAccessKey.objects.filter(id=ak_id, group=group).update(encrypted_key=enc_key)
+
+        return Response({"success": "Member removed and group keys rotated successfully."})
 
 class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
@@ -292,13 +321,13 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
         # Check recipient permissions on this version
         access_key = version.access_keys.filter(recipient=user).first()
-        if access_key and access_key.permissions in ['DOWNLOAD', 'SHARE']:
+        if access_key and access_key.permissions in ['VIEW_ONLY', 'DOWNLOAD', 'SHARE']:
             return FileResponse(version.file_path.open('rb'))
 
         # Check group permissions on this version
         group_keys = version.access_keys.filter(group__memberships__user=user)
         for gkey in group_keys:
-            if gkey.permissions in ['DOWNLOAD', 'SHARE']:
+            if gkey.permissions in ['VIEW_ONLY', 'DOWNLOAD', 'SHARE']:
                 return FileResponse(version.file_path.open('rb'))
 
         return Response({"error": "Download permission denied."}, status=status.HTTP_403_FORBIDDEN)

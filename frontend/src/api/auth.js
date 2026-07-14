@@ -62,6 +62,12 @@ export const loginUser = async (username, password, otpCode = null) => {
     if (response.data.access) {
         localStorage.setItem('access_token', response.data.access);
         localStorage.setItem('refresh_token', response.data.refresh);
+        
+        // Fetch user key details to obtain and store the user_id
+        const userKeysRes = await axios.get('/api/keys/me/', {
+            headers: { Authorization: `Bearer ${response.data.access}` }
+        });
+        localStorage.setItem('user_id', userKeysRes.data.user_id);
     }
     return response.data;
 };
@@ -69,6 +75,7 @@ export const loginUser = async (username, password, otpCode = null) => {
 export const logoutUser = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_id');
     localStorage.removeItem('decrypted_private_key'); // clear memory
 };
 

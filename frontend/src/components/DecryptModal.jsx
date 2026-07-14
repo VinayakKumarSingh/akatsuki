@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { fetchMyKeys, downloadCiphertext, createAuditLog } from '../api/documents';
 import {
   deriveKeyFromPassword,
   unwrapPrivateKey,
   decryptAESKeyWithRSA,
   decryptFile,
-  decryptString
+  decryptString,
+  decryptGroupKeyWithRSA,
+  decryptAESKeyWithGroupKey
 } from '../utils/crypto';
 
 export default function DecryptModal({ document, cachedPrivateKey, onClose }) {
@@ -57,14 +60,29 @@ export default function DecryptModal({ document, cachedPrivateKey, onClose }) {
 
       // 4. Find the correct Access Key for this version
       let aesKey = null;
+      const currentUserId = localStorage.getItem('user_id');
       for (const keyObj of (latestVersion.access_keys || [])) {
-        if (keyObj.key_type === 'RSA') {
+        if (keyObj.key_type === 'RSA' && keyObj.recipient === currentUserId) {
           try {
             aesKey = await decryptAESKeyWithRSA(keyObj.encrypted_key, rsaPrivateKey);
             break; // Found the right key!
           } catch (e) {
             console.error("Decryption failed for a key:", e);
-            // Not for us or corrupted
+          }
+        } else if (keyObj.key_type === 'GRP' && keyObj.group) {
+          try {
+            const token = localStorage.getItem('access_token');
+            const res = await axios.get(`/api/groups/${keyObj.group}/`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            const myMembership = res.data.memberships.find(m => m.user === currentUserId);
+            if (myMembership) {
+              const groupSymmetricKey = await decryptGroupKeyWithRSA(myMembership.encrypted_group_key, rsaPrivateKey);
+              aesKey = await decryptAESKeyWithGroupKey(keyObj.encrypted_key, groupSymmetricKey);
+              break;
+            }
+          } catch (e) {
+            console.error("Group decryption failed for a key:", e);
           }
         }
       }

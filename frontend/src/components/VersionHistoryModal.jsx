@@ -1,35 +1,48 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { fetchMyKeys, downloadCiphertext, createAuditLog } from '../api/documents';
 import {
   deriveKeyFromPassword,
   unwrapPrivateKey,
   decryptAESKeyWithRSA,
   decryptFile,
-  decryptString
+  decryptString,
+  decryptGroupKeyWithRSA,
+  decryptAESKeyWithGroupKey
 } from '../utils/crypto';
-import PreviewModal from './PreviewModal';
-
-export default function VersionHistoryModal({ document, cachedPrivateKey, currentUserId, onClose, onUploadNewVersion }) {
+export default function VersionHistoryModal({ document, cachedPrivateKey, currentUserId, myGroups = [], onClose, onUploadNewVersion }) {
   const [password, setPassword] = useState('');
   const [unlockedKey, setUnlockedKey] = useState(cachedPrivateKey);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
-  // Preview states
-  const [previewBlob, setPreviewBlob] = useState(null);
-  const [previewFilename, setPreviewFilename] = useState('');
 
   const isOwner = document.owner === currentUserId;
 
   const getDecryptedAESKey = async (version, rsaPrivateKey) => {
     let aesKey = null;
+    const currentUserId = localStorage.getItem('user_id');
     for (const keyObj of (version.access_keys || [])) {
-      if (keyObj.key_type === 'RSA') {
+      if (keyObj.key_type === 'RSA' && keyObj.recipient === currentUserId) {
         try {
           aesKey = await decryptAESKeyWithRSA(keyObj.encrypted_key, rsaPrivateKey);
           break;
         } catch (err) {
           console.error("Key decryption failed:", err);
+        }
+      } else if (keyObj.key_type === 'GRP' && keyObj.group) {
+        try {
+          const token = localStorage.getItem('access_token');
+          const res = await axios.get(`/api/groups/${keyObj.group}/`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const myMembership = res.data.memberships.find(m => m.user === currentUserId);
+          if (myMembership) {
+            const groupSymmetricKey = await decryptGroupKeyWithRSA(myMembership.encrypted_group_key, rsaPrivateKey);
+            aesKey = await decryptAESKeyWithGroupKey(keyObj.encrypted_key, groupSymmetricKey);
+            break;
+          }
+        } catch (err) {
+          console.error("Group key decryption failed:", err);
         }
       }
     }
@@ -111,8 +124,22 @@ export default function VersionHistoryModal({ document, cachedPrivateKey, curren
         }
 
         const blob = new Blob([decryptedBuffer], { type: mimeType });
-        setPreviewFilename(originalFilename);
-        setPreviewBlob(blob);
+        const url = URL.createObjectURL(blob);
+        
+        // Open the blob URL in a new browser tab for native previewing
+        const newTab = window.open(url, '_blank');
+        if (newTab) {
+          newTab.focus();
+        } else {
+          alert('Popup blocker prevented opening the preview in a new tab. Please allow popups for this site.');
+        }
+
+        // Revoke the object URL after 10 seconds to allow the browser to load it
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 10000);
+
+        await createAuditLog("PREVIEW", document.id, `Previewed version v${version.version_number} in a new tab: ${originalFilename}`);
       }
     } catch (err) {
       console.error(err);
@@ -124,8 +151,22 @@ export default function VersionHistoryModal({ document, cachedPrivateKey, curren
 
   const getVersionPermission = (version) => {
     if (isOwner) return 'OWNER';
-    const keyObj = (version.access_keys || []).find(k => k.recipient === currentUserId);
-    return keyObj ? keyObj.permissions : 'NONE';
+    
+    // Find all access keys that apply to the current user
+    const applicableKeys = (version.access_keys || []).filter(k => {
+      if (k.recipient === currentUserId) return true;
+      if (k.key_type === 'GRP' && k.group && myGroups.some(g => g.id === k.group)) return true;
+      return false;
+    });
+
+    if (applicableKeys.length === 0) return 'NONE';
+
+    // Order of priority: SHARE > DOWNLOAD > VIEW_ONLY
+    const perms = applicableKeys.map(k => k.permissions);
+    if (perms.includes('SHARE')) return 'SHARE';
+    if (perms.includes('DOWNLOAD')) return 'DOWNLOAD';
+    if (perms.includes('VIEW_ONLY')) return 'VIEW_ONLY';
+    return 'NONE';
   };
 
   const sortedVersions = [...(document.versions || [])].sort((a, b) => b.version_number - a.version_number);
@@ -180,6 +221,8 @@ export default function VersionHistoryModal({ document, cachedPrivateKey, curren
           {sortedVersions.map((version, index) => {
             const perm = getVersionPermission(version);
             const isDownloadable = perm === 'OWNER' || perm === 'DOWNLOAD' || perm === 'SHARE';
+            const isPreviewable = perm === 'OWNER' || perm === 'DOWNLOAD' || perm === 'SHARE' || perm === 'VIEW_ONLY';
+            const hasAccess = perm !== 'NONE';
 
             return (
               <div key={version.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
@@ -191,16 +234,16 @@ export default function VersionHistoryModal({ document, cachedPrivateKey, curren
                     Uploaded: {new Date(version.created_at).toLocaleString()}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
-                    Permission: <span style={{ color: isDownloadable ? 'var(--success-color)' : 'var(--danger-color)' }}>{perm}</span>
+                    Permission: <span style={{ color: hasAccess ? 'var(--success-color)' : 'var(--danger-color)' }}>{perm}</span>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
                     className="btn" 
-                    style={{ padding: '6px 12px', fontSize: '0.8rem', background: isDownloadable ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.02)', color: isDownloadable ? '#fff' : '#64748b' }}
+                    style={{ padding: '6px 12px', fontSize: '0.8rem', background: isPreviewable ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.02)', color: isPreviewable ? '#fff' : '#64748b' }}
                     onClick={() => handleAction(version, 'PREVIEW')}
-                    disabled={loading || !isDownloadable}
+                    disabled={loading || !isPreviewable}
                   >
                     👁️ Preview
                   </button>
@@ -217,14 +260,6 @@ export default function VersionHistoryModal({ document, cachedPrivateKey, curren
             );
           })}
         </div>
-
-        {previewBlob && (
-          <PreviewModal 
-            fileBlob={previewBlob} 
-            filename={previewFilename} 
-            onClose={() => setPreviewBlob(null)} 
-          />
-        )}
       </div>
     </div>
   );

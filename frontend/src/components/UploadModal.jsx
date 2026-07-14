@@ -447,7 +447,6 @@ export default function UploadModal({ onClose, onUploadSuccess, documentToVersio
                   >
                     <option value="VIEW_ONLY">View Only</option>
                     <option value="DOWNLOAD">Download</option>
-                    <option value="SHARE">Share</option>
                   </select>
                 </div>
               </div>
